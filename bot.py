@@ -524,7 +524,6 @@ async def handle_commands(bot, update_data):
         source_filter = parts_arg[1].upper() if len(parts_arg) > 1 else ""
         condition = parts_arg[2].lower() if len(parts_arg) > 2 else ""
 
-        # Ищем по ГЕО или региону
         filtered = []
         for r in active_rows:
             geo_match = geo_or_region in val(r, "geo").upper()
@@ -532,56 +531,39 @@ async def handle_commands(bot, update_data):
             if geo_match or region_match:
                 filtered.append(r)
 
-        # Фильтр по сорсу
         if source_filter:
             filtered = [r for r in filtered if source_filter in val(r, "source").upper() or val(r, "source") == "ALL"]
 
-        # Фильтр по условию (без BL)
         if "без bl" in condition or "без baseline" in condition:
             filtered = [r for r in filtered if val(r, "baseline") in ("—", "", "0")]
 
         if not filtered:
-            response = f"❌ Офферов по запросу '{arg}' не найдено в базе
-
-THE PACE MEDIA 💙"
+            response = "❌ Офферов по запросу '" + arg + "' не найдено в базе\n\nTHE PACE MEDIA 💙"
         else:
-            flag = GEO_FLAGS.get(geo_or_region, "📍")
-            lines = []
+            lines_list = []
             for r in filtered[:5]:
                 geo_raw = val(r, "geo")
                 geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
-                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
-                lines.append(f"• {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+                flags = " ".join(GEO_FLAGS.get(g,"") + " #" + g for g in geos[:3])
+                lines_list.append("• " + val(r,"offer") + " | " + flags + " | " + val(r,"rate") + " | " + val(r,"source"))
 
-            # Готовый ответ для партнёра
-            partner_lines = []
+            partner_list = []
             for r in filtered[:3]:
                 geo_raw = val(r, "geo")
                 geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
-                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
-                partner_lines.append(f"🌍 {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+                flags = " ".join(GEO_FLAGS.get(g,"") + " #" + g for g in geos[:3])
+                partner_list.append("🌍 " + val(r,"offer") + " | " + flags + " | " + val(r,"rate") + " | " + val(r,"source"))
 
             response = (
-                f"📍 Найдено по '{arg}': {len(filtered)} оффер(ов)
-
-"
-                + "
-".join(lines)
-                + "
-
-📋 Готовый ответ партнёру 👇
-——————
-"
-                + "
-".join(partner_lines)
-                + "
-📩 Детали — у вашего менеджера
-THE PACE MEDIA 💙"
+                "📍 Найдено по '" + arg + "': " + str(len(filtered)) + " оффер(ов)\n\n"
+                + "\n".join(lines_list)
+                + "\n\n📋 Готовый ответ партнёру 👇\n——————\n"
+                + "\n".join(partner_list)
+                + "\n📩 Детали — у вашего менеджера\nTHE PACE MEDIA 💙"
             )
 
     # /req — зафиксировать запрос + найти оффер
     elif cmd == "/req" and arg:
-        # Парсим: /req #0101 | @username | FB | ZM | без BL
         req_parts = [p.strip() for p in arg.split("|")]
         partner_id = req_parts[0] if len(req_parts) > 0 else "—"
         username   = req_parts[1] if len(req_parts) > 1 else "—"
@@ -589,7 +571,6 @@ THE PACE MEDIA 💙"
         geo        = req_parts[3].upper() if len(req_parts) > 3 else "—"
         details    = req_parts[4] if len(req_parts) > 4 else "—"
 
-        # Ищем офферы
         filtered = []
         for r in active_rows:
             geo_match = geo in val(r, "geo").upper()
@@ -606,55 +587,37 @@ THE PACE MEDIA 💙"
             offer_name = val(filtered[0], "offer")
             offer_rate = val(filtered[0], "rate")
 
-            partner_lines = []
+            partner_list = []
             for r in filtered[:3]:
                 geo_raw = val(r, "geo")
                 geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
-                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
-                partner_lines.append(f"🌍 {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+                flags = " ".join(GEO_FLAGS.get(g,"") + " #" + g for g in geos[:3])
+                partner_list.append("🌍 " + val(r,"offer") + " | " + flags + " | " + val(r,"rate") + " | " + val(r,"source"))
 
             response = (
-                f"✅ Запрос {partner_id} зафиксирован | {username}
-
-"
-                f"Найдено {len(filtered)} оффер(ов) по {geo}/{source}:
-
-"
-                + "
-".join(f"• {val(r,'offer')} | {val(r,'rate')}" for r in filtered[:5])
-                + f"
-
-📋 Готовый ответ партнёру 👇
-——————
-"
-                + "
-".join(partner_lines)
-                + "
-📩 Детали — у вашего менеджера
-THE PACE MEDIA 💙"
+                "✅ Запрос " + partner_id + " зафиксирован | " + username + "\n\n"
+                + "Найдено " + str(len(filtered)) + " оффер(ов) по " + geo + "/" + source + ":\n\n"
+                + "\n".join("• " + val(r,"offer") + " | " + val(r,"rate") for r in filtered[:5])
+                + "\n\n📋 Готовый ответ партнёру 👇\n——————\n"
+                + "\n".join(partner_list)
+                + "\n📩 Детали — у вашего менеджера\nTHE PACE MEDIA 💙"
             )
         else:
             status_req = "🔍 В поиске"
             offer_name = "—"
             offer_rate = "—"
             response = (
-                f"❌ Офферов по {geo}/{source} нет в базе
-
-"
-                f"📋 Запрос {partner_id} зафиксирован → в поиск
-"
-                f"👤 {username} | {source} | {geo} | {details}
-
-"
-                f"THE PACE MEDIA 💙"
+                "❌ Офферов по " + geo + "/" + source + " нет в базе\n\n"
+                + "📋 Запрос " + partner_id + " зафиксирован → в поиск\n"
+                + "👤 " + username + " | " + source + " | " + geo + " | " + details + "\n\n"
+                + "THE PACE MEDIA 💙"
             )
 
-        # Записываем в таблицу запросов
         try:
             add_request(partner_id, username, source, geo, details, offer_name, offer_rate, status_req)
-            log.info(f"Запрос зафиксирован: {partner_id} {username} {geo}")
+            log.info("Запрос зафиксирован: " + partner_id + " " + username + " " + geo)
         except Exception as e:
-            log.error(f"Ошибка записи запроса: {e}")
+            log.error("Ошибка записи запроса: " + str(e))
 
     # /help
     elif cmd == "/help":

@@ -132,7 +132,12 @@ def add_request(partner_id, username, source, geo, details, offer, rate, status)
     sheet = get_requests_sheet()
     today = datetime.now().strftime("%d.%m.%y")
     row = [partner_id, username, source, geo, "", details, offer, rate, status, "—", today, ""]
-    sheet.append_row(row)
+    # Найти первую пустую строку начиная с 7й
+    all_values = sheet.get_all_values()
+    next_row = len(all_values) + 1
+    if next_row < 7:
+        next_row = 7
+    sheet.insert_row(row, next_row)
 
 def get_all_rows():
     sheet = get_sheet()

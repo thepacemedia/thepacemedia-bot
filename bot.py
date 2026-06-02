@@ -32,6 +32,7 @@ TOPICS = {
     "mena":       17,
     "nordics":    18,
     "updates":    19,
+    "thepacemedia": 3,
 }
 
 # Маппинг регион → топик

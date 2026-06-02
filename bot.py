@@ -553,13 +553,38 @@ async def check_and_publish(bot):
                 post = make_post(row, status)
                 topic = get_topic(row, status)
 
+                # Анонс в General (без thread_id)
+                offer_name = val(row, "offer")
+                geo_raw    = val(row, "geo")
+                region     = val(row, "region")
+                rate       = val(row, "rate")
+                geo_flags  = format_geo(geo_raw)
+                topic_names = {
+                    4: "Топ прямо сейчас", 5: "T1 Европа", 6: "Азия",
+                    7: "Латам", 9: "СНГ", 10: "Африка", 11: "Эксклюзив",
+                    14: "Новые тесты", 17: "MENA", 18: "Nordics", 19: "Updates"
+                }
+                topic_name = topic_names.get(topic, region)
+                announcement = (
+                    f"🔥 Новый оффер | {topic_name}\n\n"
+                    f"{offer_name} | {geo_flags} | {rate}\n\n"
+                    f"👆 Полный оффер в ветке\n\n"
+                    f"THE PACE MEDIA 💙"
+                )
+                await bot.send_message(
+                    chat_id=CHANNEL_ID,
+                    text=announcement,
+                )
+                await asyncio.sleep(1)
+
+                # Полный пост в ветку
                 await bot.send_message(
                     chat_id=CHANNEL_ID,
                     message_thread_id=topic,
                     text=post,
                 )
                 update_publish_status(i, "📤 Posted")
-                log.info(f"Опубликован: {offer} → топик {topic}")
+                log.info(f"Опубликован: {offer_name} → топик {topic}")
                 await asyncio.sleep(2)  # пауза между постами
 
             except TelegramError as e:

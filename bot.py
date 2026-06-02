@@ -573,6 +573,7 @@ async def check_and_publish(bot):
                 )
                 await bot.send_message(
                     chat_id=CHANNEL_ID,
+                    message_thread_id=TOPICS["thepacemedia"],
                     text=announcement,
                 )
                 await asyncio.sleep(1)

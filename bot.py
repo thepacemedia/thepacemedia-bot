@@ -14,6 +14,8 @@ from telegram.error import TelegramError
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8393309194:AAHN-2LSXibBfMRmQ2k5XsphyY9dOGrQ5XU")
 SHEET_ID  = os.getenv("SHEET_ID", "1nGcC77Uqy_Y642FuWGgZh_Ebwzzo9KszKlP-HjO0njs")
 SHEET_NAME = "📋 Офферы"
+REQUESTS_SHEET_ID   = os.getenv("REQUESTS_SHEET_ID", "1YISJ2t_vXy2FK-FGsKtPzS5vea10TDFREVhF1ykXEnI")
+REQUESTS_SHEET_NAME = "📥 Запросы"
 CHECK_INTERVAL = 300  # секунд (5 минут)
 
 CHANNEL_ID = -1003960058902
@@ -111,6 +113,26 @@ def get_sheet():
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+
+def get_requests_sheet():
+    import json
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    if creds_json:
+        creds_info = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+    else:
+        creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+    client = gspread.authorize(creds)
+    return client.open_by_key(REQUESTS_SHEET_ID).worksheet(REQUESTS_SHEET_NAME)
+
+def add_request(partner_id, username, source, geo, details, offer, rate, status):
+    """Добавить запрос в таблицу запросов"""
+    from datetime import datetime
+    sheet = get_requests_sheet()
+    today = datetime.now().strftime("%d.%m.%y")
+    row = [partner_id, username, source, geo, "", details, offer, rate, status, "—", today, ""]
+    sheet.append_row(row)
 
 def get_all_rows():
     sheet = get_sheet()
@@ -495,6 +517,145 @@ async def handle_commands(bot, update_data):
                 lines.append(f"• {val(r,'offer')} — {flags} — {val(r,'rate')}")
             response = f"🆕 Новые офферы (7 дней):\n\n" + "\n".join(lines) + "\n\n📩 Детали — у вашего менеджера\n\nTHE PACE MEDIA 💙"
 
+    # /find — быстрый поиск офферов
+    elif cmd == "/find" and arg:
+        parts_arg = arg.split(maxsplit=2)
+        geo_or_region = parts_arg[0].upper() if parts_arg else ""
+        source_filter = parts_arg[1].upper() if len(parts_arg) > 1 else ""
+        condition = parts_arg[2].lower() if len(parts_arg) > 2 else ""
+
+        # Ищем по ГЕО или региону
+        filtered = []
+        for r in active_rows:
+            geo_match = geo_or_region in val(r, "geo").upper()
+            region_match = geo_or_region.lower() in val(r, "region").lower()
+            if geo_match or region_match:
+                filtered.append(r)
+
+        # Фильтр по сорсу
+        if source_filter:
+            filtered = [r for r in filtered if source_filter in val(r, "source").upper() or val(r, "source") == "ALL"]
+
+        # Фильтр по условию (без BL)
+        if "без bl" in condition or "без baseline" in condition:
+            filtered = [r for r in filtered if val(r, "baseline") in ("—", "", "0")]
+
+        if not filtered:
+            response = f"❌ Офферов по запросу '{arg}' не найдено в базе
+
+THE PACE MEDIA 💙"
+        else:
+            flag = GEO_FLAGS.get(geo_or_region, "📍")
+            lines = []
+            for r in filtered[:5]:
+                geo_raw = val(r, "geo")
+                geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
+                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
+                lines.append(f"• {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+
+            # Готовый ответ для партнёра
+            partner_lines = []
+            for r in filtered[:3]:
+                geo_raw = val(r, "geo")
+                geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
+                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
+                partner_lines.append(f"🌍 {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+
+            response = (
+                f"📍 Найдено по '{arg}': {len(filtered)} оффер(ов)
+
+"
+                + "
+".join(lines)
+                + "
+
+📋 Готовый ответ партнёру 👇
+——————
+"
+                + "
+".join(partner_lines)
+                + "
+📩 Детали — у вашего менеджера
+THE PACE MEDIA 💙"
+            )
+
+    # /req — зафиксировать запрос + найти оффер
+    elif cmd == "/req" and arg:
+        # Парсим: /req #0101 | @username | FB | ZM | без BL
+        req_parts = [p.strip() for p in arg.split("|")]
+        partner_id = req_parts[0] if len(req_parts) > 0 else "—"
+        username   = req_parts[1] if len(req_parts) > 1 else "—"
+        source     = req_parts[2].upper() if len(req_parts) > 2 else "—"
+        geo        = req_parts[3].upper() if len(req_parts) > 3 else "—"
+        details    = req_parts[4] if len(req_parts) > 4 else "—"
+
+        # Ищем офферы
+        filtered = []
+        for r in active_rows:
+            geo_match = geo in val(r, "geo").upper()
+            region_match = geo.lower() in val(r, "region").lower()
+            if geo_match or region_match:
+                filtered.append(r)
+        if source and source != "—":
+            filtered = [r for r in filtered if source in val(r, "source").upper() or val(r, "source") == "ALL"]
+        if "без bl" in details.lower():
+            filtered = [r for r in filtered if val(r, "baseline") in ("—", "", "0")]
+
+        if filtered:
+            status_req = "✅ Закрыт"
+            offer_name = val(filtered[0], "offer")
+            offer_rate = val(filtered[0], "rate")
+
+            partner_lines = []
+            for r in filtered[:3]:
+                geo_raw = val(r, "geo")
+                geos = [g.strip().upper() for g in geo_raw.replace(";",",").split(",")]
+                flags = " ".join(f"{GEO_FLAGS.get(g,'')} #{g}" for g in geos[:3])
+                partner_lines.append(f"🌍 {val(r,'offer')} | {flags} | {val(r,'rate')} | {val(r,'source')}")
+
+            response = (
+                f"✅ Запрос {partner_id} зафиксирован | {username}
+
+"
+                f"Найдено {len(filtered)} оффер(ов) по {geo}/{source}:
+
+"
+                + "
+".join(f"• {val(r,'offer')} | {val(r,'rate')}" for r in filtered[:5])
+                + f"
+
+📋 Готовый ответ партнёру 👇
+——————
+"
+                + "
+".join(partner_lines)
+                + "
+📩 Детали — у вашего менеджера
+THE PACE MEDIA 💙"
+            )
+        else:
+            status_req = "🔍 В поиске"
+            offer_name = "—"
+            offer_rate = "—"
+            response = (
+                f"❌ Офферов по {geo}/{source} нет в базе
+
+"
+                f"📋 Запрос {partner_id} зафиксирован → в поиск
+"
+                f"👤 {username} | {source} | {geo} | {details}
+
+"
+                f"THE PACE MEDIA 💙"
+            )
+
+        # Записываем в таблицу запросов
+        try:
+            add_request(partner_id, username, source, geo, details, offer_name, offer_rate, status_req)
+            log.info(f"Запрос зафиксирован: {partner_id} {username} {geo}")
+        except Exception as e:
+            log.error(f"Ошибка записи запроса: {e}")
+
     # /help
     elif cmd == "/help":
         response = (
@@ -517,6 +678,11 @@ async def handle_commands(bot, update_data):
             "   пример: /source UAC T1EU\n"
             "/kpi [оффер] — условия оффера\n"
             "   пример: /kpi CasinOK\n\n"
+            "🔍 Для менеджеров:\n"
+            "/find [гео/регион] [сорс] — быстрый поиск\n"
+            "   пример: /find ZM FB\n"
+            "/req [#id] | [@user] | [сорс] | [гео] | [детали]\n"
+            "   пример: /req #0101 | @username | FB | ZM | без BL\n\n"
             "THE PACE MEDIA 💙"
         )
 
